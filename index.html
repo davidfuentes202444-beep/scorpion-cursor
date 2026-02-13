@@ -1,18 +1,147 @@
-class LimbSystem {
-  constructor(end, length, speed, creature) {
-    this.creature = creature;
-    this.nodes = [];
-    for (var i = 0; i < length; i++) {
-      this.nodes.unshift(node);
-      node = node.parent;
-      if (!node.isSegment) {
-        this.length = i + 1;
-        break;
-      }
-    }
-    this.hip = this.nodes[0].parent;
-  }
-  update() {
-    this.moveTo(Input.mouse.x, Input.mouse.y);
-  }
-}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scorpion Cursor - Complete Code</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #0a0a0a;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: white;
+            font-family: sans-serif;
+        }
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        h1 {
+            z-index: 10;
+            font-weight: 300;
+            letter-spacing: 2px;
+            pointer-events: none;
+            opacity: 0.5;
+        }
+    </style>
+</head>
+<body>
+    <h1>Scorpion Cursor</h1>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let width, height;
+        const mouse = { x: 0, y: 0 };
+
+        window.addEventListener('mousemove', e => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        });
+
+        window.addEventListener('resize', resize);
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        resize();
+
+        class Segment {
+            constructor(parent, len, angle, isHead = false) {
+                this.parent = parent;
+                this.x = parent ? parent.nextX : width / 2;
+                this.y = parent ? parent.nextY : height / 2;
+                this.len = len;
+                this.angle = angle;
+                this.nextX = this.x + Math.cos(this.angle) * this.len;
+                this.nextY = this.y + Math.sin(this.angle) * this.len;
+            }
+
+            follow(tx, ty) {
+                let dx = tx - this.x;
+                let dy = ty - this.y;
+                this.angle = Math.atan2(dy, dx);
+                this.x = tx - Math.cos(this.angle) * this.len;
+                this.y = ty - Math.sin(this.angle) * this.len;
+            }
+
+            update() {
+                if (this.parent) {
+                    this.x = this.parent.nextX;
+                    this.y = this.parent.nextY;
+                }
+                this.nextX = this.x + Math.cos(this.angle) * this.len;
+                this.nextY = this.y + Math.sin(this.angle) * this.len;
+            }
+
+            draw(index, total) {
+                ctx.strokeStyle = `rgba(255, 255, 255, ${1 - index / total})`;
+                ctx.lineWidth = (total - index) / 2;
+                ctx.beginPath();
+                ctx.moveTo(this.x, this.y);
+                ctx.lineTo(this.nextX, this.nextY);
+                ctx.stroke();
+
+                // Dibujar "costillas" o patas pequeñas
+                if (index % 2 === 0 && index < 15) {
+                    this.drawLeg(this.x, this.y, this.angle + Math.PI / 2);
+                    this.drawLeg(this.x, this.y, this.angle - Math.PI / 2);
+                }
+            }
+
+            drawLeg(x, y, angle) {
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                let lx = x + Math.cos(angle) * 30;
+                let ly = y + Math.sin(angle) * 30;
+                ctx.lineTo(lx, ly);
+                ctx.lineTo(lx + Math.cos(angle + 0.5) * 10, ly + Math.sin(angle + 0.5) * 10);
+                ctx.stroke();
+            }
+        }
+
+        const segments = [];
+        const numSegments = 40;
+        const segLen = 12;
+
+        let lastSeg = new Segment(null, segLen, 0);
+        segments.push(lastSeg);
+
+        for (let i = 1; i < numSegments; i++) {
+            let newSeg = new Segment(lastSeg, segLen, 0);
+            segments.push(newSeg);
+            lastSeg = newSeg;
+        }
+
+        function animate() {
+            ctx.clearRect(0, 0, width, height);
+
+            // El primer segmento sigue al mouse (Cinemática Inversa)
+            segments[0].follow(mouse.x, mouse.y);
+            segments[0].update();
+
+            for (let i = 1; i < segments.length; i++) {
+                segments[i].follow(segments[i - 1].x, segments[i - 1].y);
+                segments[i].update();
+            }
+
+            // Dibujar de atrás hacia adelante
+            for (let i = segments.length - 1; i >= 0; i--) {
+                segments[i].draw(i, segments.length);
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
