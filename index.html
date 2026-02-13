@@ -2,116 +2,135 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Escorpión Mecánico - GitHub Project</title>
+    <title>Escorpión Gigante - Seguidor de Cursor</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #050505; }
-        canvas { display: block; }
+        body { margin: 0; overflow: hidden; background: #0a0a0a; font-family: sans-serif; }
+        #instrucciones { position: absolute; top: 10px; left: 10px; color: #555; pointer-events: none; }
     </style>
 </head>
 <body>
-
+<div id="instrucciones">Mueve el mouse para guiar al escorpión...</div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
 <script>
-    // --- ESCENA Y CÁMARA ---
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
 
-    // Iluminación
-    const light = new THREE.DirectionalLight(0xffffff, 1);
-    light.position.set(5, 10, 7.5).normalize();
-    scene.add(light);
-    scene.add(new THREE.AmbientLight(0x404040));
+    // Luces
+    const ambient = new THREE.AmbientLight(0x404040, 2);
+    scene.add(ambient);
+    const pointLight = new THREE.PointLight(0xff3300, 1, 100);
+    pointLight.position.set(0, 5, 5);
+    scene.add(pointLight);
 
-    // --- CONSTRUCCIÓN DEL ESCORPIÓN (EXTRA LARGO) ---
-    const escorpion = new THREE.Group();
+    // --- CONFIGURACIÓN ---
+    const MOUSE = new THREE.Vector2();
+    const NUM_SEGMENTOS = 25; // ¡Súper largo!
     const segmentos = [];
-    const numSegmentos = 12; // Muy largo
-
-    for (let i = 0; i < numSegmentos; i++) {
-        const geo = new THREE.BoxGeometry(1.2, 0.7, 1);
-        const mat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a });
-        const seg = new THREE.Mesh(geo, mat);
-        
-        seg.position.z = -i * 0.9;
-        // Efecto de adelgazamiento hacia la cola
-        const scale = 1 - (i * 0.06);
-        seg.scale.set(scale, scale, 1);
-        
-        segmentos.push(seg);
-        escorpion.add(seg);
-    }
-    scene.add(escorpion);
-
-    // --- PATAS ARTICULADAS ---
     const patas = [];
-    const numParesPatas = 4;
 
-    function crearPata(lado, fila) {
-        const articulacionPrincipal = new THREE.Group();
+    // --- CREACIÓN DEL CUERPO (CADENA) ---
+    for (let i = 0; i < NUM_SEGMENTOS; i++) {
+        const size = i === 0 ? 1.5 : 1.2 - (i * 0.04); // Se adelgaza
+        const geo = new THREE.BoxGeometry(size, size * 0.6, 1);
+        const mat = new THREE.MeshStandardMaterial({ color: i === 0 ? 0x330000 : 0x111111 });
+        const mesh = new THREE.Mesh(geo, mat);
         
-        // Muslo
-        const musloGeo = new THREE.BoxGeometry(0.2, 1.5, 0.2);
-        const muslo = new THREE.Mesh(musloGeo, new THREE.MeshStandardMaterial({color: 0x333333}));
-        muslo.position.y = -0.5;
-        
-        // Pantorrilla
-        const pantoGeo = new THREE.BoxGeometry(0.15, 1.5, 0.15);
-        const panto = new THREE.Mesh(pantoGeo, new THREE.MeshStandardMaterial({color: 0x111111}));
-        panto.position.y = -1.2;
-        panto.rotation.z = 0.5 * lado;
-        
-        muslo.add(panto);
-        articulacionPrincipal.add(muslo);
-        
-        // Posición inicial en el cuerpo largo
-        articulacionPrincipal.position.set(0.8 * lado, 0, -fila * 1.1);
-        articulacionPrincipal.rotation.z = -0.8 * lado;
-        
-        return { mesh: articulacionPrincipal, lado, fila };
+        mesh.position.z = -i * 1.0;
+        segmentos.push(mesh);
+        scene.add(mesh);
+
+        // Añadir patas solo en los segmentos frontales (estilo insecto)
+        if (i > 1 && i < 6) {
+            crearParPatas(mesh, i);
+        }
     }
 
-    for (let i = 1; i <= numParesPatas; i++) {
-        patas.push(crearPata(1, i));  // Derecha
-        patas.push(crearPata(-1, i)); // Izquierda
+    function crearParPatas(segmento, indice) {
+        [1, -1].forEach(lado => {
+            const pataRaiz = new THREE.Group();
+            
+            // Fémur
+            const femur = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.2, 0.2), new THREE.MeshStandardMaterial({color: 0x222222}));
+            femur.position.set(0.6 * lado, 0, 0);
+            femur.rotation.z = 1 * lado;
+            
+            // Tibia (Articulada)
+            const tibia = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.5, 0.15), new THREE.MeshStandardMaterial({color: 0x050505}));
+            tibia.position.y = -0.6;
+            tibia.rotation.z = -0.8 * lado;
+            
+            femur.add(tibia);
+            pataRaiz.add(femur);
+            segmento.add(pataRaiz);
+            patas.push({ raiz: pataRaiz, f: femur, t: tibia, lado, indice });
+        });
     }
-    patas.forEach(p => escorpion.add(p.mesh));
 
-    camera.position.set(8, 8, 8);
-    camera.lookAt(0, 0, -5);
+    camera.position.set(0, 15, 10);
+    camera.lookAt(0, 0, 0);
 
-    // --- ANIMACIÓN DE CAMINATA REAL (SIN DESLIZAR) ---
+    // --- EVENTO MOUSE ---
+    window.addEventListener('mousemove', (e) => {
+        MOUSE.x = (e.clientX / window.innerWidth) * 2 - 1;
+        MOUSE.y = -(e.clientY / window.innerHeight) * 2 + 1;
+    });
+
+    // --- LOOP DE ANIMACIÓN ---
     function animate() {
         requestAnimationFrame(animate);
-        const time = Date.now() * 0.003;
+        const time = Date.now() * 0.005;
 
-        patas.forEach((pata) => {
-            // Desfase para que camine alternado (gaits)
-            const desfase = (pata.lado > 0) ? (pata.fila * 0.8) : (pata.fila * 0.8 + Math.PI);
-            const ciclo = time + desfase;
+        // 1. La cabeza sigue al cursor suavemente
+        const targetX = MOUSE.x * 15;
+        const targetZ = -MOUSE.y * 15;
+        segmentos[0].position.x += (targetX - segmentos[0].position.x) * 0.05;
+        segmentos[0].position.z += (targetZ - segmentos[0].position.z) * 0.05;
+        
+        // Rotación de la cabeza hacia el objetivo
+        segmentos[0].lookAt(targetX, segmentos[0].position.y, targetZ);
 
-            // Movimiento: Solo avanza cuando se levanta (No desliza)
-            const elevacion = Math.max(0, Math.sin(ciclo)) * 0.6;
-            const avance = Math.cos(ciclo) * 0.4;
+        // 2. Cada segmento sigue al anterior (Efecto serpiente/escorpión largo)
+        for (let i = 1; i < NUM_SEGMENTOS; i++) {
+            const prev = segmentos[i-1];
+            const curr = segmentos[i];
+            
+            const dx = prev.position.x - curr.position.x;
+            const dz = prev.position.z - curr.position.z;
+            const angle = Math.atan2(dx, dz);
+            
+            curr.rotation.y = angle;
+            
+            const dist = Math.sqrt(dx*dx + dz*dz);
+            const minDist = 0.9;
+            if (dist > minDist) {
+                curr.position.x += Math.sin(angle) * (dist - minDist);
+                curr.position.z += Math.cos(angle) * (dist - minDist);
+            }
+            // Ondulación sutil
+            curr.position.y = Math.sin(time + i * 0.3) * 0.2;
+        }
 
-            pata.mesh.position.y = elevacion;
-            pata.mesh.rotation.x = avance; // Inclinación adelante/atrás
-            pata.mesh.children[0].rotation.x = -elevacion; // Doblar rodilla
-        });
-
-        // Movimiento del cuerpo largo (ondulación)
-        segmentos.forEach((seg, i) => {
-            seg.rotation.y = Math.sin(time + i * 0.5) * 0.05;
-            seg.position.y = Math.cos(time + i * 0.3) * 0.02;
+        // 3. Caminata articulada (Solo cuando se mueve)
+        patas.forEach(p => {
+            const vel = 0.05;
+            const ciclo = time * 2 + (p.indice * 0.8) + (p.lado > 0 ? 0 : Math.PI);
+            
+            // Movimiento real de patas (no desliza)
+            const levantamiento = Math.max(0, Math.sin(ciclo)) * 0.7;
+            const avance = Math.cos(ciclo) * 0.5;
+            
+            p.f.rotation.x = avance; // Mueve hacia adelante
+            p.t.rotation.x = -levantamiento; // Dobla la articulación "rodilla"
+            p.raiz.position.y = levantamiento; // Levanta del suelo
         });
 
         renderer.render(scene, camera);
     }
 
-    // Ajuste de ventana
     window.addEventListener('resize', () => {
         camera.aspect = window.innerWidth / window.innerHeight;
         camera.updateProjectionMatrix();
