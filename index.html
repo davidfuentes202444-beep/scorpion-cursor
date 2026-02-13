@@ -1,130 +1,94 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <title>Scorpion Cursor Pro</title>
-    <style>
-        body { margin: 0; background: #050505; overflow: hidden; font-family: sans-serif; }
-        canvas { display: block; }
-        .title {
-            position: absolute; top: 20px; width: 100%; text-align: center;
-            color: white; font-size: 24px; letter-spacing: 4px; opacity: 0.8;
-            pointer-events: none; text-transform: uppercase;
-        }
-    </style>
-</head>
-<body>
-    <div class="title">Scorpion Cursor</div>
-    <canvas id="canvas"></canvas>
+// --- CONFIGURACIÓN DEL ESCORPIÓN ---
+const SCORPION_CONFIG = {
+    segmentosCuerpo: 10,        // EXTRA LARGO
+    numPatas: 8,                // 4 pares
+    longitudPata: 2.5,
+    velocidadCaminata: 0.05
+};
 
-<script>
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
+// --- CREACIÓN DEL CUERPO (Largo) ---
+const grupoEscorpion = new THREE.Group();
+const segmentos = [];
 
-let width, height;
-let mouse = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
-let target = { x: mouse.x, y: mouse.y };
-
-// Configuración estética
-const numSegments = 45;
-const segmentLen = 8;
-const smoothing = 0.08; // Controla la lentitud (más bajo = más lento)
-
-window.addEventListener('mousemove', e => {
-    target.x = e.clientX;
-    target.y = e.clientY;
-});
-
-function resize() {
-    width = canvas.width = window.innerWidth;
-    height = canvas.height = window.innerHeight;
-}
-window.addEventListener('resize', resize);
-resize();
-
-class Segment {
-    constructor(len, isHead = false) {
-        this.x = width / 2;
-        this.y = height / 2;
-        this.angle = 0;
-        this.len = len;
-        this.nextX = this.x;
-        this.nextY = this.y;
-    }
-
-    update(tx, ty) {
-        let dx = tx - this.x;
-        let dy = ty - this.y;
-        this.angle = Math.atan2(dy, dx);
-        this.x = tx - Math.cos(this.angle) * this.len;
-        this.y = ty - Math.sin(this.angle) * this.len;
-        this.nextX = this.x + Math.cos(this.angle) * this.len;
-        this.nextY = this.y + Math.sin(this.angle) * this.len;
-    }
-
-    draw(i) {
-        // Dibujar costillas horizontales (el cuerpo)
-        ctx.lineWidth = 1;
-        ctx.strokeStyle = `rgba(200, 200, 200, ${1 - i/numSegments})`;
-        
-        let ribWidth = Math.sin(i * 0.2) * 15 + 5;
-        let rx = Math.cos(this.angle + Math.PI/2) * ribWidth;
-        let ry = Math.sin(this.angle + Math.PI/2) * ribWidth;
-
-        ctx.beginPath();
-        ctx.moveTo(this.x - rx, this.y - ry);
-        ctx.lineTo(this.x + rx, this.y + ry);
-        ctx.stroke();
-
-        // Dibujar patas grandes (solo en algunos segmentos)
-        if (i > 5 && i < 25 && i % 6 === 0) {
-            this.drawLeg(this.x, this.y, this.angle + Math.PI/2, i);
-            this.drawLeg(this.x, this.y, this.angle - Math.PI/2, i);
-        }
-    }
-
-    drawLeg(x, y, angle, i) {
-        ctx.beginPath();
-        ctx.lineWidth = 0.8;
-        let jointX = x + Math.cos(angle) * 30;
-        let jointY = y + Math.sin(angle) * 30;
-        let footX = jointX + Math.cos(angle + 0.8) * 40;
-        let footY = jointY + Math.sin(angle + 0.8) * 40;
-        
-        ctx.moveTo(x, y);
-        ctx.lineTo(jointX, jointY);
-        ctx.lineTo(footX, footY);
-        ctx.stroke();
-        
-        // Pinza pequeña al final
-        ctx.arc(footX, footY, 2, 0, Math.PI*2);
-        ctx.stroke();
-    }
+for (let i = 0; i < SCORPION_CONFIG.segmentosCuerpo; i++) {
+    const geo = new THREE.BoxGeometry(1.2, 0.8, 1.5);
+    const mat = new THREE.MeshStandardMaterial({ color: 0x222222 });
+    const seg = new THREE.Mesh(geo, mat);
+    
+    seg.position.z = -i * 1.3; // Posicionamiento longitudinal
+    seg.scale.set(1 - i*0.05, 1 - i*0.05, 1); // Se hace más delgado hacia la cola
+    
+    segmentos.push(seg);
+    grupoEscorpion.add(seg);
 }
 
-const segments = Array.from({ length: numSegments }, () => new Segment(segmentLen));
+// --- CREACIÓN DE PATAS ARTICULADAS ---
+const patas = [];
 
-function animate() {
-    ctx.clearRect(0, 0, width, height);
+function crearPata(lado, indice) {
+    const pataGrupo = new THREE.Group();
+    
+    // Articulación 1 (Femur)
+    const femur = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.1, 0.1, 1.5),
+        new THREE.MeshStandardMaterial({ color: 0x333333 })
+    );
+    femur.rotation.z = Math.PI / 3 * lado;
+    
+    // Articulación 2 (Tibia/Pie)
+    const tibia = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.08, 0.02, 1.5),
+        new THREE.MeshStandardMaterial({ color: 0x111111 })
+    );
+    tibia.position.y = -1.2;
+    tibia.rotation.z = -Math.PI / 4 * lado;
+    
+    femur.add(tibia);
+    pataGrupo.add(femur);
+    
+    // Posición en el cuerpo (distribuidas a lo largo)
+    pataGrupo.position.set(0.8 * lado, 0, -indice * 1.2);
+    return { malla: pataGrupo, lado, indice };
+}
 
-    // Movimiento suave (Lerp)
-    mouse.x += (target.x - mouse.x) * smoothing;
-    mouse.y += (target.y - mouse.y) * smoothing;
+for (let i = 0; i < SCORPION_CONFIG.numPatas / 2; i++) {
+    patas.push(crearPata(1, i + 1));  // Derecha
+    patas.push(crearPata(-1, i + 1)); // Izquierda
+}
 
-    let tx = mouse.x;
-    let ty = mouse.y;
+patas.forEach(p => grupoEscorpion.add(p.malla));
 
-    segments.forEach((seg, i) => {
-        seg.update(tx, ty);
-        seg.draw(i);
-        tx = seg.x;
-        ty = seg.y;
+// --- LÓGICA DE CAMINATA (SIN DESLIZAR) ---
+function animarCaminata(tiempo) {
+    patas.forEach((pata, i) => {
+        // Desfase para que no muevan todas a la vez
+        const desfase = (pata.lado > 0) ? (pata.indice * 0.5) : (pata.indice * 0.5 + Math.PI);
+        const t = (tiempo * 5) + desfase;
+
+        // Movimiento Vertical (Levantar la pata)
+        const lift = Math.max(0, Math.sin(t)) * 0.8; 
+        
+        // Movimiento Horizontal (Avance)
+        const stride = Math.cos(t) * 0.5;
+
+        pata.malla.position.y = lift;
+        pata.malla.position.z = (-pata.indice * 1.2) + stride;
+        
+        // Rotación de la articulación para realismo
+        pata.malla.children[0].rotation.x = Math.sin(t) * 0.3;
     });
 
-    requestAnimationFrame(animate);
+    // Movimiento ondulante del cuerpo (cola)
+    segmentos.forEach((seg, i) => {
+        seg.position.y = Math.sin(tiempo * 2 + i * 0.3) * 0.1;
+        seg.rotation.y = Math.cos(tiempo * 2 + i * 0.3) * 0.05;
+    });
 }
 
-animate();
-</script>
-</body>
-</html>
+// En el loop de renderizado:
+// function animate() {
+//    requestAnimationFrame(animate);
+//    const time = Date.now() * 0.002;
+//    animarCaminata(time);
+//    renderer.render(scene, camera);
+// }
